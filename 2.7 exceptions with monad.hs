@@ -6,30 +6,28 @@ data M a = Raise Exception
          | Return a
          deriving (Show)
 
-instance Monad M where
-    (Raise e) >>= f = Raise e
-    (Return a) >>= f = f a
-    return = Return
-    fail e = Raise e
+unit :: a -> M a
+unit a = Return a
 
-instance Functor M where
-    fmap = liftM
+star :: M a -> (a -> M b) -> M b
+m `star` k = case m of
+                Raise e -> Raise e
+                Return a -> k a
 
-instance Applicative M where
-    pure = return
-    (<*>) = ap
+raise :: Exception -> M a
+raise e = Raise e
 
 data Term = Con Int
           | Div Term Term
           deriving (Show)
 
 eval :: Term -> M Int
-eval (Con a) = return a
-eval (Div t u) = (eval t) >>= \a -> 
-                    ((eval u) >>= \b -> 
+eval (Con a) = unit a
+eval (Div t u) = (eval t) `star` \a -> 
+                    ((eval u) `star` \b -> 
                       if b == 0
-                      then fail "divide by zero"
-                      else (return (div a b)))
+                      then raise "divide by zero"
+                      else (unit (div a b)))
 
 answer, error_term :: Term
 answer = (Div (Div (Con 1972) (Con 2))(Con 23))
