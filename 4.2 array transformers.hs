@@ -39,19 +39,35 @@ data Prog = Prog Comm Term
           deriving (Show)
 
 type State = Arr
+type M a = State -> (a, State)
 
-eval :: Term -> State -> Int
-eval (Var i) x = index i x
-eval (Con a) x = a
-eval (Add t u) x = (eval t x) + (eval u x)
+unit :: a -> M a
+unit a = \x -> (a, x)
 
-exec :: Comm -> State -> State
-exec (Asgn i t) x = update i (eval t x) x
-exec (Seq c d) x = exec d (exec c x)
-exec (If t c d) x = if (eval t x) == 0 then exec c x else exec d x
+star :: M a -> (a -> M b) -> M b
+m `star` k = \x -> let (a, y) = m x in k a y
+
+block :: Val -> M a -> a
+block v m = let (a, x) = m (newarray v) in a
+
+fetch :: Ix -> M Val
+fetch i = \x -> (index i x, x)
+
+assign :: Ix -> Val -> M()
+assign i v = \x -> ((), update i v x)
+
+eval :: Term -> M Int
+eval (Var i) = fetch i
+eval (Con a) = unit a
+eval (Add t u) = (eval t) `star` \a -> ((eval u) `star` \b -> unit (a + b))
+
+exec :: Comm -> M ()
+exec (Asgn i t) = (eval t) `star` \a -> assign i a
+exec (Seq c d) = (exec c) `star` (\() -> (exec d) `star` \() -> unit ())
+exec (If t c d) = (eval t) `star` \a -> if a == 0 then exec c else exec d
 
 elab :: Prog -> Int
-elab (Prog c t) = eval t (exec c (newarray 0))
+elab (Prog c t) = block 0 ((exec c) `star` \() -> (eval t) `star` \a -> unit a)
 
 main :: IO()
 main = do
